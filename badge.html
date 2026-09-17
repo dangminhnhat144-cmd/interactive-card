@@ -3,43 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Interactive 3D Badge</title>
+  <title>3D Lanyard Badge</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
     html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
       overflow: hidden;
-      background: transparent !important; /* Nền hoàn toàn trong suốt */
+      background: transparent !important;
     }
     #canvas-container {
-      width: 100vw;
-      height: 100vh;
-      position: absolute;
-      top: 0;
-      left: 0;
+      width: 100vw; height: 100vh;
       cursor: grab;
     }
-    #canvas-container:active {
-      cursor: grabbing;
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
+    #canvas-container:active { cursor: grabbing; }
   </style>
-
-  <!-- Import Three.js từ CDN -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
       }
     }
   </script>
@@ -50,125 +32,109 @@
   <script type="module">
     import * as THREE from 'three';
 
-    // --- SETUP SCENE & RENDERER ---
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
 
-    // Lùi góc nhìn Camera ra xa (z = 18) để thẻ đung đưa không bị cắt mép khung hình Readymag
-    const camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 18);
+    const camera = new THREE.PerspectiveCamera(18, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 20);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x000000, 0); // Đảm bảo độ đục = 0
+    renderer.setClearColor(0x000000, 0);
     container.appendChild(renderer.domElement);
 
-    // --- STUDIO LIGHTING (Ánh sáng phản chiếu mặt thẻ bóng) ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
-    scene.add(ambientLight);
+    // Ánh sáng Studio
+    scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.5);
-    dirLight1.position.set(5, 10, 7);
-    scene.add(dirLight1);
-
-    const dirLight2 = new THREE.DirectionalLight(0xe8f0ff, 1.5);
-    dirLight2.position.set(-5, -5, -5);
-    scene.add(dirLight2);
-
-    // --- TẠO THẺ 3D (PVC MATERIAL) ---
-    const cardWidth = 2.4;
-    const cardHeight = 3.4;
-    const cardGeometry = new THREE.PlaneGeometry(cardWidth, cardHeight, 32, 32);
-
-    // THAY LINK ẢNH CỦA BẠN VÀO ĐÂY (Nếu có ảnh riêng)
+    // Thẻ PVC
     const textureLoader = new THREE.TextureLoader();
     const frontTexture = textureLoader.load('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80');
 
+    const cardGeometry = new THREE.PlaneGeometry(2.2, 3.2);
     const cardMaterial = new THREE.MeshPhysicalMaterial({
       map: frontTexture,
-      roughness: 0.15,          // Nhẵn bóng
-      metalness: 0.1,           // Nhựa
-      clearcoat: 1.0,           // Lớp bóng nhựa PVC ngoài cùng
+      roughness: 0.15,
+      metalness: 0.1,
+      clearcoat: 1.0,
       clearcoatRoughness: 0.05,
       side: THREE.DoubleSide
     });
+    const card = new THREE.Mesh(cardGeometry, cardMaterial);
+    card.position.set(0, -1, 0);
+    scene.add(card);
 
-    const cardMesh = new THREE.Mesh(cardGeometry, cardMaterial);
-    cardMesh.position.set(0, -0.8, 0);
-    scene.add(cardMesh);
+    // Dây Lanyard (Vật lý Verlet Rope)
+    const segmentCount = 12;
+    const ropeNodes = [];
+    for (let i = 0; i <= segmentCount; i++) {
+      ropeNodes.push({
+        pos: new THREE.Vector3(0, 4 - (i * 0.35), 0),
+        oldPos: new THREE.Vector3(0, 4 - (i * 0.35), 0)
+      });
+    }
 
-    // --- TẠO DÂY ĐEO (LANYARD BAND) ---
-    const curvePoints = [
-      new THREE.Vector3(0, 4.5, 0),
-      new THREE.Vector3(0.15, 2.2, 0),
-      new THREE.Vector3(0.08, 0.9, 0),
-      new THREE.Vector3(0, 0.8, 0)
-    ];
+    const ropeCurve = new THREE.CatmullRomCurve3(ropeNodes.map(n => n.pos));
+    const ropeGeo = new THREE.TubeGeometry(ropeCurve, 32, 0.05, 8, false);
+    const ropeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });
+    const ropeMesh = new THREE.Mesh(ropeGeo, ropeMat);
+    scene.add(ropeMesh);
 
-    const curve = new THREE.CatmullRomCurve3(curvePoints);
-    const tubeGeometry = new THREE.TubeGeometry(curve, 32, 0.06, 8, false);
-    const tubeMaterial = new THREE.MeshStandardMaterial({
-      color: 0x111111,
-      roughness: 0.6,
-      metalness: 0.2
-    });
-    const lanyardMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
-    scene.add(lanyardMesh);
-
-    // --- TƯƠNG TÁC KÉO THẢ (DRAG EFFECT) ---
+    // Tương tác kéo thả
     let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
-    let targetRotationX = 0;
-    let targetRotationY = 0;
+    let dragPos = new THREE.Vector3();
 
-    window.addEventListener('pointerdown', (e) => {
-      isDragging = true;
-      previousMousePosition = { x: e.clientX, y: e.clientY };
-    });
-
+    window.addEventListener('pointerdown', () => { isDragging = true; });
+    window.addEventListener('pointerup', () => { isDragging = false; });
     window.addEventListener('pointermove', (e) => {
       if (!isDragging) return;
-      const deltaX = e.clientX - previousMousePosition.x;
-      const deltaY = e.clientY - previousMousePosition.y;
-
-      targetRotationY += deltaX * 0.01;
-      targetRotationX += deltaY * 0.01;
-
-      previousMousePosition = { x: e.clientX, y: e.clientY };
+      const vec = new THREE.Vector3(
+        (e.clientX / window.innerWidth) * 2 - 1,
+        -(e.clientY / window.innerHeight) * 2 + 1,
+        0.5
+      );
+      vec.unproject(camera);
+      const dir = vec.sub(camera.position).normalize();
+      const distance = -camera.position.z / dir.z;
+      dragPos.copy(camera.position).add(dir.multiplyScalar(distance));
     });
 
-    window.addEventListener('pointerup', () => {
-      isDragging = false;
-    });
-
-    // --- RE-RESPONSIVE KHUNG HÌNH ---
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // --- ANIMATION VẬT LÝ DUNG ĐƯA ---
-    const clock = new THREE.Clock();
-
+    // Vòng lặp vật lý
     function animate() {
       requestAnimationFrame(animate);
-      const time = clock.getElapsedTime();
 
-      // Khi buông chuột, thẻ tự đung đưa nhẹ nhàng
-      if (!isDragging) {
-        targetRotationY = Math.sin(time * 1.5) * 0.2;
-        targetRotationX = Math.cos(time * 1.2) * 0.08;
+      // Điểm gốc cố định trên đỉnh
+      ropeNodes[0].pos.set(0, 4, 0);
+
+      // Vị trí đuôi dây kéo thẻ
+      if (isDragging) {
+        ropeNodes[segmentCount].pos.lerp(dragPos, 0.3);
+      } else {
+        // Đung đưa nhẹ
+        const t = Date.now() * 0.002;
+        ropeNodes[segmentCount].pos.x = Math.sin(t) * 0.5;
       }
 
-      // Xoay thẻ mượt mà (Lerp)
-      cardMesh.rotation.y += (targetRotationY - cardMesh.rotation.y) * 0.1;
-      cardMesh.rotation.x += (targetRotationX - cardMesh.rotation.x) * 0.1;
+      // Cập nhật vị trí thẻ theo điểm cuối của dây
+      card.position.copy(ropeNodes[segmentCount].pos).sub(new THREE.Vector3(0, 1.6, 0));
+      card.rotation.y = (ropeNodes[segmentCount].pos.x) * 0.3;
+
+      // Cập nhật hình dáng dây
+      ropeMesh.geometry.dispose();
+      ropeCurve.points = ropeNodes.map(n => n.pos);
+      ropeMesh.geometry = new THREE.TubeGeometry(ropeCurve, 32, 0.05, 8, false);
 
       renderer.render(scene, camera);
     }
-
     animate();
   </script>
 </body>
